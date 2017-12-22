@@ -1,0 +1,117 @@
+---
+title: "Placebo Effect"
+date: "12/21/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(MASS)
+library(tidyverse)
+library(cowplot)
+```
+
+Largely following:
+
+> Senn S. 2011. Francis Galton and regression to the mean. *Significance* 8:124–126.
+
+## Data
+
+Generate baseline data with a mean of 90 for $n$ subjects. Add normally distributed offset (i.e., the treatment has no effect, and the second measure goes up or down randomly).
+
+```{r}
+set.seed(3247543)
+
+n <- 1000
+Baseline <- rnorm(n, mean = 90, sd = 7)
+Outcome <- Baseline + rnorm(n, mean = 0, sd = 5)
+```
+
+Set a `cutoff` of 95 for "Hypertensive", and calculate the difference between the Baseline and Outcome measures. Color code groups and plot.
+
+```{r}
+cutoff <- 95
+
+M <- tibble(Baseline, Outcome)
+
+# Categorize groups
+M <- M %>% 
+  mutate(
+    Group = case_when(
+    Baseline > cutoff & Outcome > cutoff ~ "Hypertensive",
+    Baseline < cutoff & Outcome < cutoff ~ "Normotensive",
+    TRUE ~ "Inconsistent"),
+    Difference = Outcome - Baseline)
+
+M %>% ggplot(aes(Baseline, Outcome, color = Group)) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  geom_vline(xintercept = cutoff, linetype = "dashed") +
+  geom_hline(yintercept = cutoff, linetype = "dashed") +
+  geom_point(alpha = 0.5, size = 0.75) +
+  geom_smooth(aes(group = 1), method = "lm", se = FALSE, color = "black") +
+  annotate("text",
+           label = paste("r =", round(cor(M$Baseline, M$Outcome), 2)),
+           x = 70, y = 110, size = 6) +
+  scale_color_manual(values = c("red", "yellow3", "blue")) +
+  coord_fixed() +
+  xlim(c(60, 120)) +
+  ylim(c(60, 120))
+```
+
+Across the three groups, there is no mean effect (red line).
+
+```{r}
+M %>% 
+  ggplot(aes(Difference)) +
+  geom_vline(xintercept = mean(M$Difference), color = "red") +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  geom_line(stat = "density")
+```
+
+Within groups, there is a bimodal distribution in the Inconsistent group. Some go up, and some go down. The problem is that half of this distribution will be truncated by only considering the group with Baseline measurements > 95.
+
+```{r}
+M %>% 
+  ggplot(aes(Difference, color = Group)) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  geom_line(stat = "density") +
+  scale_color_manual(values = c("red", "yellow3", "blue"))
+```
+
+## Hypertensive only
+
+Consider only those with Baseline measurements > 95.
+
+```{r}
+M_hyp <- M %>% 
+  filter(Baseline > cutoff)
+
+ggplot(M_hyp, aes(Baseline, Outcome, color = Group)) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  geom_vline(xintercept = cutoff, linetype = "dashed") +
+  geom_hline(yintercept = cutoff, linetype = "dashed") +
+  geom_point(alpha = 0.5, size = 0.75) +
+  scale_color_manual(values = c("red", "yellow3", "blue")) +
+  geom_smooth(aes(group = 1), method = "lm", se = FALSE, color = "black") +
+  coord_fixed() +
+  xlim(c(60, 120)) +
+  ylim(c(60, 120))
+```
+
+Because the subjects with "hypertensive" Outcome scores (>95) are not part of the study, all that remains of the Inconsistent group are those who were above the cutoff at Baseline, but below the cutoff at Outcome. Those appear to have improved despite no treatment effect.
+
+```{r}
+ggplot(M_hyp, aes(Difference, color = Group)) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  geom_line(stat = "density") +
+  scale_color_manual(values = c("red", "yellow3", "blue"))
+
+ggplot(M_hyp, aes(Difference)) +
+  geom_vline(xintercept = mean(M_hyp$Difference), color = "red") +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  geom_line(stat = "density")
+```
+
+
+
